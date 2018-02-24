@@ -385,3 +385,178 @@ In some cases a types comment can have both self-reference and reference to anot
 When writing data and function examples for self-referential data definitions always put the base case first. Its usually trivial for data examples, but many function tests don't work properly if the base case isn't working properly, so testing that first can help avoid being confused by a failure in a non base case test. Also be sure to have a test for a list (or other structure) that is at least 2 long.
 
 ---
+
+## Data Driven Templates
+Templates are the core structure that we know a function must have, independent of the details of its definition. In many cases the template for a function is determined by the type of data the function consumes. We refer to these as data driven templates. The recipe below can be used to produce a data driven template for any type comment.
+
+For a given type `TypeName` the data driven template is:
+
+```racket
+(define (fn-for-type-name x)
+  <body>)
+```
+
+Where `x` is an appropriately chosen parameter name (often the initials of the type name) and the body is determined according to the table below. To use the table, start with the type of the parameter, i.e. TypeName, and select the row of the table that matches that type. The first row matches only primitive types, the later rows match parts of type comments.
+
+(Note that when designing functions that consume additional atomic parameters, the name of that parameter gets added after every ... in the template. Templates for functions with additional complex paremeters are covered in ***Functions on 2 One-Of Data***.)
+
+<table border="1" cellpadding="5" style="text-align: left; vertical-align: text-top;">
+<thead>
+<tr><th style="width: 30%;">Type of data</th><th style="width: 25%;"><tt>cond</tt> question (if applicable)</th><th style="width: 45%;">Body or <tt>cond</tt> answer (if applicable)</th></tr>
+</thead>
+<tbody>
+<tr style="text-align: left; vertical-align: text-top;">
+<td>
+<p><strong>Atomic Non-Distinct</strong></p>
+<ul>
+<li><tt>Number</tt></li>
+<li><tt>String</tt></li>
+<li><tt>Boolean</tt></li>
+<li><tt>Image</tt></li>
+<li>interval like <tt>Number[0, 10)</tt></li>
+<li>etc.</li>
+</ul>
+</td>
+<td>
+<p>Appropriate predicate</p>
+<ul>
+<li><tt>(number? x)</tt></li>
+<li><tt>(string? x)</tt></li>
+<li><tt>(boolean? x)</tt></li>
+<li><tt>(image? x)</tt></li>
+<li><tt>(and (&lt;= 0 x)</tt><br /> <tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(&lt; x 10))</tt></li>
+<li>etc.</li>
+</ul>
+</td>
+<td>
+<p>Expression that operates on the parameter.</p>
+<p><tt>(... x)</tt></p>
+</td>
+</tr>
+<tr style="text-align: left; vertical-align: text-top;">
+<td>
+<p><strong>Atomic Distinct Value</strong></p>
+<ul>
+<li><tt>"red"</tt></li>
+<li><tt>false</tt></li>
+<li><tt>empty</tt></li>
+<li>etc.</li>
+</ul>
+</td>
+<td>
+<p>Appropriate predicate</p>
+<ul>
+<li><tt>(string=? x "red")</tt></li>
+<li><tt>(false? x)</tt></li>
+<li><tt>(empty? x)</tt></li>
+<li>etc.</li>
+</ul>
+</td>
+<td>
+<p>Since value is distinct, parameter does not appear.</p>
+<p><tt>(...)</tt></p>
+</td>
+</tr>
+<tr style="text-align: left; vertical-align: text-top;">
+<td>
+<p><strong>One Of</strong></p>
+<ul>
+<li>enumerations</li>
+<li>itemizations</li>
+</ul>
+</td>
+<td></td>
+<td>
+<p>Cond with one clause per subclass of one of.</p>
+<p><tt>(cond [&lt;question1&gt; &lt;answer1&gt;]<br /></tt> <tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[&lt;question2&gt; &lt;answer2&gt;])</tt></p>
+<p>Where each question and answer expression is formed by following the rule in the question or answer column of this table for the corresponding case. A detailed derivation of a template for a one-of type appears below.</p>
+<p>It is permissible to use <tt>else</tt> for the last question for itemizations and large enumerations. Normal enumerations should not use else.</p>
+<p>Note that in a <i>mixed data itemization</i>, such as</p>
+<p><tt>;; Measurement is one of:</tt><br /> <tt>;; - Number[-10, 0)</tt><br /> <tt>;; - true</tt><br /> <tt>;; - Number(0, 10]</tt></p>
+<p>the cond questions must be <strong>guarded</strong> with an appropriate type predicate. In particular, the first cond question for <tt>Measurement</tt> must be</p>
+<p><tt>(and (number? m)</tt><br /> <tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(&lt;= -10 m)</tt><br /> <tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(&lt; m 0))</tt></p>
+<p>where the call to <tt>number?</tt> guards the calls to <tt>&lt;=</tt> and <tt>&lt;</tt>. This will protect <tt>&lt;=</tt> and <tt>&lt;</tt> from ever receiving true as an argument.</p>
+</td>
+</tr>
+<tr style="text-align: left; vertical-align: text-top;">
+<td>
+<p><strong>Compound</strong></p>
+<ul>
+<li><tt>Position</tt></li>
+<li><tt>Firework</tt></li>
+<li><tt>Ball</tt></li>
+<li>cons</li>
+<li>etc.</li>
+</ul>
+</td>
+<td>
+<p>Predicate from structure</p>
+<ul>
+<li><tt>(posn? x)</tt></li>
+<li><tt>(firework? x)</tt></li>
+<li><tt>(ball? x)</tt></li>
+<li><tt>(cons? x)</tt> (often just else)</li>
+<li>etc.</li>
+</ul>
+</td>
+<td>
+<p>All selectors.</p>
+<ul>
+<li><tt>(... (posn-x x) (posn-y x))</tt></li>
+<li><tt>(... (firework-y x) (firework-color x))</tt></li>
+<li><tt>(... (ball-x x) (ball-dx x))</tt></li>
+<li><tt>(... (first x) (rest x))</tt></li>
+<li>etc.</li>
+</ul>
+<br />
+<p>Then consider the result type of each selector call and wrap the accessor expression appropriately using the table with that type. So for example, if after adding all the selectors you have:</p>
+<p><tt>(... (game-ball g) ;produces Ball</tt><br /> <tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(game-paddle g)) ;produces Paddle</tt></p>
+<p>Then, because both Ball and Paddle are non-primitive types (types that you yourself defined in a data definition) the reference rule (immediately below) says that you should add calls to those types' template functions as follows:</p>
+<p><tt> (... (fn-for-ball (game-ball g))</tt><br /> <tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(fn-for-paddle (game-paddle g)))</tt></p>
+</td>
+</tr>
+<tr style="text-align: left; vertical-align: text-top;">
+<td>
+<p><strong>Other Non-Primitive Type Reference</strong></p>
+</td>
+<td>
+<p>Predicate, usually from structure definition</p>
+<ul>
+<li><tt>(firework? x)</tt></li>
+<li><tt>(person? x)</tt></li>
+</ul>
+</td>
+<td>
+<p>Call to other type's template function</p>
+<ul>
+<li><tt>(fn-for-firework x)</tt></li>
+<li><tt>(fn-for-person x)</tt></li>
+</ul>
+</td>
+</tr>
+<tr style="text-align: left; vertical-align: text-top;">
+<td>
+<p><strong>Self Reference</strong></p>
+</td>
+<td></td>
+<td>
+<p>Form natural recursion with call to this type's template function:</p>
+<ul>
+<li><tt>(fn-for-los (rest los))</tt></li>
+</ul>
+</td>
+</tr>
+<tr style="text-align: left; vertical-align: text-top;">
+<td>
+<p><strong>Mutual Reference</strong></p>
+<br />
+<p>Note: form and group all templates in mutual reference cycle together.</p>
+</td>
+<td></td>
+<td>
+<p>Call to other type's template function:</p>
+<p><tt>(fn-for-lod (dir-subdirs d)</tt><br /> <tt>(fn-for-dir (first lod))</tt></p>
+</td>
+</tr>
+</tbody>
+</table>
